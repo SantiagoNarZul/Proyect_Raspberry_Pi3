@@ -1,46 +1,60 @@
 import RPi.GPIO as GPIO
 import time
-from email.message import EmailMessage
-import smtplib
 from datetime import datetime
+from modulos import sensores_sala, sensor_habitacion, sensores_cocina, email
 
 GPIO.setwarnings(False)
 # Configura el modo de la GPIO
 GPIO.setmode(GPIO.BCM)
 
+#Banderas
+alarma_on = 0
+
 # Configura el número del pin GPIO que deseas usar
-led_pin = 18
+habilitador_alarma = 4
+led_alarma = 20
 
-# Configura el pin como salida
-GPIO.setup(led_pin, GPIO.OUT)
-
-# Enviar correo desde raspberry
-remitente = "mateo.lasso@correounivalle.edu.co"
-destinatarios = ["santiago.narvaez@correounivalle.edu.co", "dayron.ramirez@correounivalle.edu.co"]
-
-mensaje = "Hola desde Raspberry Pi 3B"
-
-for destinatario in destinatarios:
-    email = EmailMessage()
-    email["From"] = remitente
-    email["To"] = destinatario
-    email["Subject"] = "Alarma Raspberry:"
-    email.set_content(mensaje)
-    smtp = smtplib.SMTP_SSL("smtp.gmail.com")
-    smtp.login(remitente, "pexb kpdq wnbu rayr")
-
-    smtp.sendmail(remitente, destinatario, email.as_string())
-
-    smtp.quit()
+#Configurar el pin 4 como entrada
+GPIO.setup(habilitador_alarma, GPIO.IN)
+# Configura el pin 20 como salida
+GPIO.setup(led_alarma, GPIO.OUT)
 
 
 while True:
-    # Enciende el LED
-    print("Led encendido")
-    GPIO.output(led_pin, GPIO.HIGH)
-    time.sleep(1)  # Espera 1 segundo
+    valor_habilitador_alarma = GPIO.input(habilitador_alarma)
 
-    # Apaga el LED
-    print("Led apagado")
-    GPIO.output(led_pin, GPIO.LOW)
-    time.sleep(1)  # Espera 1 segundo
+    if (valor_habilitador_alarma == 1 and alarma_on == 0):
+        alarma_on = 1
+        email.enviar_email("Alarma Activa")
+    elif (valor_habilitador_alarma == 0 and alarma_on == 1):
+        alarma_on = 0
+        GPIO.output(led_alarma, GPIO.LOW)
+        email.enviar_email("Alarma Desactivada")
+
+    if (alarma_on == 1):
+        #Sensores generales sala
+        valor_ventana_sala, valor_puerta = sensores_sala.lectura_sensores()
+        #Sensor habitacion
+        valor_ventana_habitacion = sensor_habitacion.lectura_sensores()
+        #Sensor cocina
+        valor_sensor_gas, valor_sensor_incendio = sensores_cocina.lectura_sensores()
+
+        if valor_ventana_sala == 1 or valor_puerta == 1 or valor_ventana_habitacion == 1 or valor_sensor_gas == 1 or valor_sensor_incendio == 1:
+            GPIO.output(led_alarma, GPIO.HIGH)
+            # Crea un mensaje con los sensores activados
+            sensores_activados = []
+            if valor_ventana_sala == 1:
+                sensores_activados.append("Sensor de Ventana Sala")
+            if valor_puerta == 1:
+                sensores_activados.append("Sensor de Puerta")
+            if valor_ventana_habitacion == 1:
+                sensores_activados.append("Sensor de Ventana Habitación")
+            if valor_sensor_gas == 1:
+                sensores_activados.append("Sensor de Gas")
+            if valor_sensor_incendio  == 1:
+                sensores_activados.append("Sensor de Incendio")
+            mensaje = " y ".join(sensores_activados) + " activados - Alarma Raspberry Pi 3B"
+            email.enviar_email(mensaje)
+
+    elif (alarma_on == 0):
+        GPIO.output(led_alarma, GPIO.LOW)
